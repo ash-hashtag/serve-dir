@@ -1,4 +1,6 @@
-use std::{convert::Infallible, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::UNIX_EPOCH};
+use std::{
+    convert::Infallible, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::UNIX_EPOCH,
+};
 
 use hyper::{
     header::CONTENT_TYPE,
@@ -147,16 +149,21 @@ async fn request_handler(
     }
 
     let uri = request.uri();
-    let time_of_request = std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(std::time::Duration::default()).as_millis();
+    let time_of_request = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(std::time::Duration::default())
+        .as_millis();
     match request.method() {
-
         &Method::GET => {
             let mut uri_path = &uri.path()[1..];
             if uri_path.is_empty() {
                 uri_path = "index.html";
             } else {
                 if uri_path.starts_with('.') {
-                    println!("{}: [403] [GET] {} requested invalid path", time_of_request, uri);
+                    println!(
+                        "{}: [403] [GET] {} requested invalid path",
+                        time_of_request, uri
+                    );
                     return Ok(response_builder
                         .status(403)
                         .body(Body::from("Invalid Path"))
@@ -166,10 +173,19 @@ async fn request_handler(
             let file_path = PathBuf::from(format!("{}{}", shared_data.directory_path, uri_path));
 
             if file_path.is_file() {
-                match tokio::fs::read(file_path).await {
+                match tokio::fs::read(&file_path).await {
                     Ok(body) => {
-                        println!("{}: [200] [GET] {} requested file path",time_of_request, uri);
-                        return Ok(response_builder.body(Body::from(body)).unwrap());
+                        println!(
+                            "{}: [200] [GET] {} requested file path",
+                            time_of_request, uri
+                        );
+                        // let content_type = tree_magic::from_u8(&body);
+                        let content_type =
+                            mime_guess::MimeGuess::from_path(file_path).first_or_octet_stream();
+                        return Ok(response_builder
+                            .header("content-type", content_type.to_string())
+                            .body(Body::from(body))
+                            .unwrap());
                     }
                     Err(err) => {
                         println!("{}: [500] [GET] {} {} ", time_of_request, uri, err);
@@ -182,7 +198,7 @@ async fn request_handler(
             }
         }
         &Method::OPTIONS => {
-            println!("{}: [200] [OPTIONS] {}",time_of_request, uri);
+            println!("{}: [200] [OPTIONS] {}", time_of_request, uri);
             return Ok(response_builder.body(Body::empty()).unwrap());
         }
         _ => {}
@@ -202,7 +218,10 @@ async fn request_handler(
         .status(404)
         .body(body)
         .unwrap();
-    println!("{}: [404] [GET] {} requested address not found",time_of_request, uri);
+    println!(
+        "{}: [404] [GET] {} requested address not found",
+        time_of_request, uri
+    );
     return Ok(response);
 }
 
@@ -214,4 +233,17 @@ async fn not_found_body(path: &Option<String>) -> (Body, bool) {
         }
     }
     return (Body::from(NOT_FOUND), false);
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn mime_type_from_binary_test() {
+        let path = "./package.json";
+        let mime = mime_guess::MimeGuess::from_path(path)
+            .first_or_octet_stream()
+            .to_string();
+        assert_eq!("application/json", mime);
+    }
 }
